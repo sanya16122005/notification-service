@@ -1,0 +1,25 @@
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# Кэш и байт-код Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Настройки IDE
+.idea/
+*.iml
+
+# Логи и временные файлы
+*.log
+*.tmp
+
+# Файлы ОС
+Thumbs.db
+.DS_Store
+
+# Локальные настройки и секреты
+.env
+*.sqlite3
