@@ -67,11 +67,15 @@ else:
     status_comment = "Уведомление передано в канал доставки"
 
 # --- Расчет времени доставки ---------------------------------------
-if notification_status == "ОТЛОЖЕНО":
-    delay_hours = 24 - current_hour + quiet_hours_end
-    delivery_at = created_at + timedelta(hours=delay_hours)
-else:
+# Отложенное уведомление отправляется, как только закончатся
+# «тихие часы»: вечером - утром следующего дня, ночью - тем же утром.
+morning = created_at.replace(hour=quiet_hours_end, minute=0)
+if notification_status != "ОТЛОЖЕНО":
     delivery_at = created_at
+elif current_hour >= quiet_hours_start:
+    delivery_at = morning + timedelta(days=1)
+else:
+    delivery_at = morning
 
 # --- Вывод результата ----------------------------------------------
 print("=" * 52)
