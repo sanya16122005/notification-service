@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "name": "Стерлигов Александр",
+    "contact": "a.sterligov@example.com",
+    "is_active": true,
+    "subscribed": true,
+    "quiet_start": 23,
+    "quiet_end": 8
+  },
+  {
+    "id": 2,
+    "name": "Иванова Мария",
+    "contact": "+7 900 123-45-67",
+    "is_active": true,
+    "subscribed": true,
+    "quiet_start": 22,
+    "quiet_end": 7
+  },
+  {
+    "id": 3,
+    "name": "Петров Сергей",
+    "contact": "s.petrov@example.com",
+    "is_active": true,
+    "subscribed": false,
+    "quiet_start": 0,
+    "quiet_end": 6
+  },
+  {
+    "id": 4,
+    "name": "Кузнецова Ольга",
+    "contact": "o.kuznetsova@example.com",
+    "is_active": false,
+    "subscribed": true,
+    "quiet_start": 23,
+    "quiet_end": 9
+  }
+]

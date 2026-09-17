@@ -1,0 +1,26 @@
+[
+  {
+    "code": "email",
+    "title": "Электронная почта",
+    "enabled": true,
+    "daily_limit": 20,
+    "sent_today": 17,
+    "max_length": 0
+  },
+  {
+    "code": "sms",
+    "title": "SMS-сообщения",
+    "enabled": true,
+    "daily_limit": 10,
+    "sent_today": 4,
+    "max_length": 70
+  },
+  {
+    "code": "push",
+    "title": "Push-уведомления",
+    "enabled": false,
+    "daily_limit": 50,
+    "sent_today": 0,
+    "max_length": 120
+  }
+]
