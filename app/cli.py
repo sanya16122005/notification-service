@@ -1,4 +1,4 @@
-"""Сервис управления уведомлениями. Точка запуска приложения.
+"""Консольный интерфейс сервиса управления уведомлениями.
 
 Практическая работа № 2. Консольное приложение ведет учет
 пользователей, каналов доставки и уведомлений: проверяет правила
@@ -11,11 +11,9 @@
 
 from datetime import datetime
 
-import channels
-import notifications as notify
-import storage
-import users
-import utils
+from app import storage, utils
+from app.services import channels, users
+from app.services import notifications as notify
 
 LINE_WIDTH = 60
 MENU_CHOICES = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
@@ -218,7 +216,7 @@ def show_reference() -> None:
     """Вывести справку о функциях проекта (интроспекция)."""
     print_title("ФУНКЦИИ ПРОЕКТА")
     for module in (users, channels, notify, storage, utils):
-        print(f"--- {module.__name__}.py ---")
+        print(f"--- {module.__name__} ---")
         for description in utils.describe_module(module):
             print(f"  {description}")
 
@@ -257,7 +255,3 @@ def main() -> None:
             show_statistics(notification_list)
         elif choice == "9":
             show_reference()
-
-
-if __name__ == "__main__":
-    main()

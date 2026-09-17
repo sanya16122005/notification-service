@@ -8,8 +8,8 @@
 from datetime import datetime, timedelta
 from typing import Iterator
 
-from channels import is_too_long, limit_left, register_sent
-from utils import format_datetime, next_id
+from app.services.channels import is_too_long, limit_left, register_sent
+from app.utils import format_datetime, next_id
 
 STATUS_SENT = "ОТПРАВЛЕНО"
 STATUS_DELAYED = "ОТЛОЖЕНО"

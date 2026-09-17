@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from notifications import (
+from app.services.notifications import (
     STATUS_DELAYED,
     STATUS_REJECTED,
     STATUS_SENT,

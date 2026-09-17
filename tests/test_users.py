@@ -1,7 +1,12 @@
 """Тесты функций работы с пользователями и каналами."""
 
-from channels import channel_codes, is_too_long, limit_left
-from users import add_user, find_users, get_user, subscribed_users
+from app.services.channels import channel_codes, is_too_long, limit_left
+from app.services.users import (
+    add_user,
+    find_users,
+    get_user,
+    subscribed_users,
+)
 
 
 def make_users() -> list[dict]:

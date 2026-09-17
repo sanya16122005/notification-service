@@ -7,7 +7,7 @@
 
 from typing import Iterator
 
-from utils import next_id
+from app.utils import next_id
 
 QUIET_START_DEFAULT = 23
 QUIET_END_DEFAULT = 8

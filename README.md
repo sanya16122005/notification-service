@@ -74,28 +74,40 @@
 
 ```
 notification-service/
-├── main.py             — точка запуска, меню и вывод данных
-├── users.py            — функции работы с пользователями
-├── channels.py         — функции работы с каналами доставки
-├── notifications.py    — правила доставки и работа с уведомлениями
-├── storage.py          — загрузка и сохранение данных (JSON)
-├── utils.py            — безопасный ввод, даты, интроспекция
-├── conftest.py         — подключение модулей проекта к тестам
-├── requirements.txt    — инструменты разработки
-├── setup.cfg           — настройки линтера flake8
-├── data/               — данные приложения
+├── main.py                  — точка запуска: python main.py
+├── app/                     — пакет приложения
+│   ├── __init__.py
+│   ├── cli.py               — консольный интерфейс: меню и вывод
+│   ├── storage.py           — загрузка и сохранение данных (JSON)
+│   ├── utils.py             — безопасный ввод, даты, интроспекция
+│   └── services/            — логика предметной области
+│       ├── __init__.py
+│       ├── users.py         — пользователи
+│       ├── channels.py      — каналы доставки
+│       └── notifications.py — уведомления и правила доставки
+├── data/                    — данные приложения
 │   ├── users.json
 │   ├── channels.json
 │   └── notifications.json
-└── tests/              — автоматизированные тесты
-    ├── test_users.py
-    └── test_notifications.py
+├── tests/                   — автоматизированные тесты
+│   ├── test_users.py
+│   └── test_notifications.py
+├── conftest.py              — подключение пакета app к тестам
+├── requirements.txt         — инструменты разработки
+├── setup.cfg                — настройки линтера flake8
+└── .vscode/                 — запуск, отладка и тесты в VS Code
 ```
+
+Код разделён на два уровня. Подпакет `app/services` содержит логику
+предметной области и не занимается вводом-выводом, поэтому его
+функции легко тестировать. Модули `app/storage.py` и `app/utils.py`
+отвечают за инфраструктуру: файлы и работу с пользовательским вводом.
+`app/cli.py` связывает всё вместе в меню приложения.
 
 ## Формат хранения данных
 
 Данные хранятся в JSON-файлах каталога `data/` — списками словарей.
-Чтение и запись выполняются в `storage.py` через контекстный менеджер
+Чтение и запись выполняются в `app/storage.py` через контекстный менеджер
 `with`; отсутствие файла и некорректный JSON перехватываются и не
 прерывают работу программы.
 
@@ -120,16 +132,16 @@ notification-service/
 
 | Модуль | Функции |
 | --- | --- |
-| `users.py` | `add_user`, `get_user`, `find_users`, `subscribed_users`, `sort_users`, `set_subscription` |
-| `channels.py` | `get_channel`, `channel_codes`, `limit_left`, `is_too_long`, `register_sent`, `reset_counters`, `enabled_channels`, `sort_channels_by_load` |
-| `notifications.py` | `is_quiet_time`, `get_block_reason`, `get_status`, `get_status_comment`, `get_delivery_time`, `check_delivery`, `create_notification`, `cancel_notification`, `find_notifications`, `notifications_by_status`, `user_notifications`, `sort_notifications`, `count_by_status` |
-| `storage.py` | `load_json`, `save_json`, `load_users`, `save_users`, `load_channels`, `save_channels`, `load_notifications`, `save_notifications` |
-| `utils.py` | `next_id`, `error_text`, `input_text`, `input_int`, `input_choice`, `input_datetime`, `format_datetime`, `parse_datetime`, `describe_module` |
-| `main.py` | `main`, `show_users`, `show_channels`, `show_notifications`, `show_delivery_check`, `add_notification`, `remove_notification`, `search_notifications`, `show_statistics`, `show_reference` |
+| `app/services/users.py` | `add_user`, `get_user`, `find_users`, `subscribed_users`, `sort_users`, `set_subscription` |
+| `app/services/channels.py` | `get_channel`, `channel_codes`, `limit_left`, `is_too_long`, `register_sent`, `reset_counters`, `enabled_channels`, `sort_channels_by_load` |
+| `app/services/notifications.py` | `is_quiet_time`, `get_block_reason`, `get_status`, `get_status_comment`, `get_delivery_time`, `check_delivery`, `create_notification`, `cancel_notification`, `find_notifications`, `notifications_by_status`, `user_notifications`, `sort_notifications`, `count_by_status` |
+| `app/storage.py` | `load_json`, `save_json`, `load_users`, `save_users`, `load_channels`, `save_channels`, `load_notifications`, `save_notifications` |
+| `app/utils.py` | `next_id`, `error_text`, `input_text`, `input_int`, `input_choice`, `input_datetime`, `format_datetime`, `parse_datetime`, `describe_module` |
+| `app/cli.py` | `main`, `show_users`, `show_channels`, `show_notifications`, `show_delivery_check`, `add_notification`, `remove_notification`, `search_notifications`, `show_statistics`, `show_reference` |
 
 Начальный сценарий ПР1 сохранён: функции `is_quiet_time`,
 `get_block_reason`, `get_status`, `get_status_comment` и
-`get_delivery_time` перенесены в `notifications.py` и работают вместе
+`get_delivery_time` перенесены в `app/services/notifications.py` и работают вместе
 с новыми функциями, а данные из отдельных переменных переведены в
 коллекции `users`, `channels` и `notifications`.
 

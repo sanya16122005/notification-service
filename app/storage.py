@@ -8,7 +8,9 @@
 import json
 import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Каталог data/ находится в корне проекта, на уровень выше пакета app
+PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(PACKAGE_DIR)
 DATA_DIR = os.path.join(BASE_DIR, "data")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 CHANNELS_FILE = os.path.join(DATA_DIR, "channels.json")
