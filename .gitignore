@@ -8,6 +8,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Кэш инструментов разработки
+.pytest_cache/
+.mypy_cache/
+
 # Настройки IDE
 .idea/
 *.iml
