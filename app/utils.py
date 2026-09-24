@@ -1,28 +1,22 @@
 """Вспомогательные функции проекта.
 
 Модуль содержит безопасный ввод данных с обработкой исключений,
-преобразование даты и времени, а также средства интроспекции,
-используемые для вывода справки о функциях проекта.
+преобразование даты и времени, вывод заголовков, а также средства
+интроспекции, используемые для справки о классах проекта.
 """
 
 import inspect
 from datetime import datetime
-from types import ModuleType
 
 DATETIME_FORMAT = "%d.%m.%Y %H:%M"
+LINE_WIDTH = 60
 
 
-def next_id(records: list[dict]) -> int:
-    """Вернуть следующий свободный идентификатор записи.
-
-    Идентификаторы не переиспользуются: берется максимальный
-    существующий и увеличивается на единицу.
-    """
-    maximum = 0
-    for record in records:
-        if record.get("id", 0) > maximum:
-            maximum = record["id"]
-    return maximum + 1
+def print_title(title: str) -> None:
+    """Вывести заголовок раздела."""
+    print("=" * LINE_WIDTH)
+    print(title)
+    print("=" * LINE_WIDTH)
 
 
 def error_text(error: Exception) -> str:
@@ -93,22 +87,38 @@ def parse_datetime(value: str) -> datetime:
     return datetime.strptime(value, DATETIME_FORMAT)
 
 
-def describe_module(module: ModuleType) -> list[str]:
-    """Собрать описания функций модуля средствами интроспекции.
+def class_hierarchy(cls: type) -> str:
+    """Вернуть цепочку наследования класса (порядок MRO)."""
+    names = [item.__name__ for item in cls.__mro__ if item is not object]
+    return " -> ".join(names)
 
-    Для каждой функции, объявленной в самом модуле, возвращается
-    строка вида «имя(параметры) - первая строка docstring».
+
+def describe_class(cls: type) -> list[str]:
+    """Собрать описания открытых методов и свойств класса.
+
+    Средствами интроспекции перебираются атрибуты, объявленные в
+    самом классе. Для каждого метода или свойства возвращается
+    строка «имя(параметры) [вид] - первая строка docstring».
     """
     descriptions = []
-    for name in dir(module):
-        attribute = getattr(module, name)
-        if not inspect.isfunction(attribute):
+    for name, member in vars(cls).items():
+        if name.startswith("_"):
             continue
-        if attribute.__module__ != module.__name__:
+        if isinstance(member, property):
+            kind, function = "свойство", member.fget
+        elif isinstance(member, classmethod):
+            kind, function = "метод класса", member.__func__
+        elif isinstance(member, staticmethod):
+            kind, function = "статический метод", member.__func__
+        elif inspect.isfunction(member):
+            kind, function = "метод", member
+        else:
             continue
-        document = inspect.getdoc(attribute) or "описание отсутствует"
-        signature = inspect.signature(attribute)
+        document = inspect.getdoc(function) or "описание отсутствует"
+        signature = ""
+        if kind != "свойство":
+            signature = str(inspect.signature(function))
         descriptions.append(
-            f"{name}{signature} - {document.splitlines()[0]}"
+            f"{name}{signature} [{kind}] - {document.splitlines()[0]}"
         )
     return descriptions

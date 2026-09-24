@@ -1,257 +1,244 @@
 """Консольный интерфейс сервиса управления уведомлениями.
 
-Практическая работа № 2. Консольное приложение ведет учет
-пользователей, каналов доставки и уведомлений: проверяет правила
-отправки, создает и отменяет уведомления, ищет их и считает
-статистику. Данные хранятся в JSON-файлах каталога data/.
+Практическая работа № 3. Приложение построено на объектной модели:
+класс ConsoleApp хранит ссылку на сервис NotificationService и
+вызывает его методы из пунктов меню. Каждый пункт меню - метод,
+обернутый декоратором menu_action, а выбор пункта выполняется по
+словарю «номер - (название, метод)».
 
-Начальный сценарий ПР1 сохранен: проверка возможности доставки
-выполняется пунктом меню 4 функциями модуля notifications.
+Сценарий ПР1 сохранен: проверка возможности доставки выполняется
+пунктом меню 4 методом DeliveryRules.check().
 """
 
+from collections.abc import Callable
 from datetime import datetime
 
-from app import storage, utils
-from app.services import channels, users
-from app.services import notifications as notify
+from app import models, utils
+from app.decorators import menu_action
+from app.models.notification import STATUS_DELAYED
+from app.services import delivery, repositories
+from app.services.notifications import NotificationService
 
-LINE_WIDTH = 60
-MENU_CHOICES = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-
-MENU_TEXT = """
-1. Показать пользователей
-2. Показать каналы доставки
-3. Показать уведомления
-4. Проверить возможность отправки
-5. Создать уведомление
-6. Отменить уведомление
-7. Найти уведомление по тексту
-8. Статистика по статусам
-9. Справка о функциях проекта
-0. Выход
-"""
+LINE_WIDTH = utils.LINE_WIDTH
 
 
-def print_title(title: str) -> None:
-    """Вывести заголовок раздела."""
-    print("=" * LINE_WIDTH)
-    print(title)
-    print("=" * LINE_WIDTH)
+class ConsoleApp:
+    """Консольное приложение: меню и вывод результатов."""
 
+    def __init__(self, service: NotificationService) -> None:
+        self.service = service
+        self._actions: dict[str, tuple[str, Callable[[], bool]]] = {
+            "1": ("Показать пользователей", self.show_users),
+            "2": ("Показать каналы доставки", self.show_channels),
+            "3": ("Показать уведомления", self.show_notifications),
+            "4": ("Проверить возможность отправки", self.check_delivery),
+            "5": ("Создать уведомление", self.add_notification),
+            "6": ("Отменить уведомление", self.remove_notification),
+            "7": ("Найти уведомление по тексту", self.search),
+            "8": ("Статистика по статусам", self.show_statistics),
+            "9": ("Справка о классах проекта", self.show_reference),
+            "10": ("Добавить пользователя", self.add_user),
+            "11": ("Изменить подписку пользователя",
+                   self.toggle_subscription),
+        }
 
-def show_users(user_list: list[dict]) -> None:
-    """Вывести список пользователей таблицей."""
-    print_title("ПОЛЬЗОВАТЕЛИ")
-    if not user_list:
-        print("Список пользователей пуст.")
-        return
-    for user in users.sort_users(user_list):
-        subscription = "подписан" if user["subscribed"] else "отписан"
-        state = "активен" if user["is_active"] else "неактивен"
-        print(f"{user['id']:>3}. {user['name']} ({user['contact']})")
-        print(f"     {state}, {subscription}, тихие часы "
-              f"{user['quiet_start']}:00-{user['quiet_end']}:00")
-    subscribed = list(users.subscribed_users(user_list))
-    print(f"Получают уведомления: {len(subscribed)} из {len(user_list)}")
+    def menu_text(self) -> str:
+        """Сформировать текст меню из словаря действий."""
+        lines = [f"{number}. {title}"
+                 for number, (title, _) in self._actions.items()]
+        lines.append("0. Выход")
+        return "\n" + "\n".join(lines) + "\n"
 
+    def run(self) -> None:
+        """Цикл меню: выбор пункта и вызов соответствующего метода."""
+        utils.print_title("СЕРВИС УПРАВЛЕНИЯ УВЕДОМЛЕНИЯМИ")
+        choices = set(self._actions) | {"0"}
+        while True:
+            print(self.menu_text())
+            choice = utils.input_choice("Выберите действие: ", choices)
+            if choice == "0":
+                print("Завершение работы.")
+                break
+            _, action = self._actions[choice]
+            if action():
+                self.service.save()
 
-def show_channels(channel_list: list[dict]) -> None:
-    """Вывести список каналов доставки таблицей."""
-    print_title("КАНАЛЫ ДОСТАВКИ")
-    if not channel_list:
-        print("Список каналов пуст.")
-        return
-    for channel in channels.sort_channels_by_load(channel_list):
-        state = "включен" if channel["enabled"] else "отключен"
-        length = channel["max_length"]
-        limit = "без ограничения" if not length else f"{length} символов"
-        print(f"  {channel['code']:<6} {channel['title']} - {state}")
-        print(f"         отправлено {channel['sent_today']} из "
-              f"{channel['daily_limit']}, остаток "
-              f"{channels.limit_left(channel)}, длина: {limit}")
-
-
-def show_notifications(notification_list: list[dict]) -> None:
-    """Вывести список уведомлений с указанием статуса."""
-    print_title("УВЕДОМЛЕНИЯ")
-    if not notification_list:
-        print("Уведомлений пока нет.")
-        return
-    for item in notify.sort_notifications(notification_list):
-        print(f"{item['id']:>3}. [{item['status']}] {item['subject']}")
-        print(f"     канал {item['channel']}, приоритет "
-              f"{item['priority']}, создано {item['created_at']}")
-        print(f"     {item['comment']}")
-
-
-def show_delivery_check(
-    user_list: list[dict],
-    channel_list: list[dict],
-) -> None:
-    """Проверить возможность доставки уведомления.
-
-    Сценарий из ПР1: по выбранному пользователю, каналу и тексту
-    определяется статус уведомления без его сохранения.
-    """
-    print_title("ПРОВЕРКА ВОЗМОЖНОСТИ ОТПРАВКИ")
-    try:
-        user = users.get_user(
-            user_list, utils.input_int("Идентификатор пользователя: ", 1, 999)
+    def _input_user_and_channel(self) -> tuple[int, str]:
+        """Запросить идентификатор пользователя и код канала."""
+        user_id = utils.input_int("Идентификатор пользователя: ", 1, 999)
+        self.service.users.get(user_id)
+        channel_code = utils.input_choice(
+            "Канал доставки: ", self.service.channels.codes()
         )
-        channel = channels.get_channel(
-            channel_list,
-            utils.input_choice(
-                "Канал доставки: ", channels.channel_codes(channel_list)
-            ),
-        )
-    except KeyError as error:
-        print(f"Ошибка: {utils.error_text(error)}")
-        return
-    text = utils.input_text("Текст уведомления: ")
-    priority = utils.input_int("Приоритет (1-3): ", 1, 3)
-    created = utils.input_datetime("Дата и время (ДД.ММ.ГГГГ ЧЧ:ММ): ")
+        return user_id, channel_code
 
-    result = notify.check_delivery(user, channel, text, priority, created)
-    print("-" * LINE_WIDTH)
-    print(f"Получатель: {user['name']} ({user['contact']})")
-    print(f"Канал: {channel['code']}, остаток лимита: "
-          f"{channels.limit_left(channel)}")
-    print(f"Длина текста: {len(text)}, приоритет: {priority}")
-    print(f"Тихое время: {result['quiet_time']}")
-    print(f"Статус: {result['status']}")
-    print(f"Комментарий: {result['comment']}")
-    if result["status"] != notify.STATUS_REJECTED:
-        moment = utils.format_datetime(result["delivery_at"])
+    @menu_action("ПОЛЬЗОВАТЕЛИ")
+    def show_users(self) -> None:
+        """Вывести список пользователей."""
+        users = self.service.users
+        if not len(users):
+            print("Список пользователей пуст.")
+            return
+        for user in users.sorted_by_name():
+            subscription = "подписан" if user.subscribed else "отписан"
+            state = "активен" if user.is_active else "неактивен"
+            print(f"{user.id:>3}. {user}")
+            print(f"     {state}, {subscription}, "
+                  f"тихие часы {user.quiet_hours_text()}")
+        receivers = list(users.receivers())
+        print(f"Получают уведомления: {len(receivers)} из {len(users)}")
+
+    @menu_action("КАНАЛЫ ДОСТАВКИ")
+    def show_channels(self) -> None:
+        """Вывести список каналов доставки."""
+        channels = self.service.channels
+        if not len(channels):
+            print("Список каналов пуст.")
+            return
+        for channel in channels.sorted_by_load():
+            state = "включен" if channel.enabled else "отключен"
+            length = channel.max_length
+            limit = f"{length} символов" if length else "без ограничения"
+            print(f"  {channel} - {state} "
+                  f"(класс {type(channel).__name__})")
+            print(f"         отправлено {channel.sent_today} из "
+                  f"{channel.daily_limit}, остаток "
+                  f"{channel.limit_left()}, длина: {limit}")
+
+    @menu_action("УВЕДОМЛЕНИЯ")
+    def show_notifications(self) -> None:
+        """Вывести уведомления от срочных к обычным."""
+        notifications = self.service.notifications
+        if not len(notifications):
+            print("Уведомлений пока нет.")
+            return
+        for item in notifications.ordered():
+            print(f"{item.id:>3}. {item}")
+            print(f"     канал {item.channel_code}, приоритет "
+                  f"{item.priority}, создано "
+                  f"{utils.format_datetime(item.created_at)}")
+            print(f"     {item.comment}")
+
+    @menu_action("ПРОВЕРКА ВОЗМОЖНОСТИ ОТПРАВКИ")
+    def check_delivery(self) -> None:
+        """Проверить возможность доставки (сценарий ПР1)."""
+        user_id, channel_code = self._input_user_and_channel()
+        subject = utils.input_text("Тема: ")
+        text = utils.input_text("Текст уведомления: ")
+        priority = utils.input_int("Приоритет (1-3): ", 1, 3)
+        created = utils.input_datetime("Дата и время (ДД.ММ.ГГГГ ЧЧ:ММ): ")
+
+        result = self.service.check_delivery(
+            user_id, channel_code, text, priority, created
+        )
+        user = self.service.users.get(user_id)
+        channel = self.service.channels.get(channel_code)
+        print("-" * LINE_WIDTH)
+        print(f"Получатель: {user}")
+        print(f"Канал: {channel}, остаток лимита: {channel.limit_left()}")
+        print(f"Длина текста: {len(text)}, приоритет: {priority}")
+        print(f"Тихое время: {result.quiet_time}")
+        print(f"Статус: {result.status}")
+        print(f"Комментарий: {result.comment}")
+        if result.is_rejected:
+            print("Доставка не запланирована")
+            return
+        moment = utils.format_datetime(result.delivery_at)
         print(f"Время доставки: {moment}")
-    else:
-        print("Доставка не запланирована")
+        print("Сообщение в канале:")
+        print(channel.format_message(subject, text))
 
-
-def add_notification(
-    notification_list: list[dict],
-    user_list: list[dict],
-    channel_list: list[dict],
-) -> bool:
-    """Создать уведомление по данным, введенным пользователем.
-
-    Возвращает True, если уведомление создано и данные нужно
-    сохранить.
-    """
-    print_title("СОЗДАНИЕ УВЕДОМЛЕНИЯ")
-    try:
-        user = users.get_user(
-            user_list, utils.input_int("Идентификатор пользователя: ", 1, 999)
-        )
-        channel = channels.get_channel(
-            channel_list,
-            utils.input_choice(
-                "Канал доставки: ", channels.channel_codes(channel_list)
-            ),
-        )
+    @menu_action("СОЗДАНИЕ УВЕДОМЛЕНИЯ")
+    def add_notification(self) -> bool:
+        """Создать уведомление по введенным данным."""
+        user_id, channel_code = self._input_user_and_channel()
         subject = utils.input_text("Тема: ")
         text = utils.input_text("Текст: ")
         priority = utils.input_int("Приоритет (1-3): ", 1, 3)
-        notification = notify.create_notification(
-            notification_list, user, channel, subject, text,
-            priority, datetime.now(),
+        notification = self.service.create_notification(
+            user_id, channel_code, subject, text, priority, datetime.now()
         )
-    except (KeyError, ValueError) as error:
-        print(f"Уведомление не создано: {utils.error_text(error)}")
-        return False
-    print(f"Создано уведомление №{notification['id']}: "
-          f"{notification['status']} - {notification['comment']}")
-    return True
+        print(f"Создано уведомление №{notification.id}: "
+              f"{notification.status} - {notification.comment}")
+        if not notification.is_sent:
+            return True
+        print("Сообщение в канале:")
+        print(self.service.preview(notification))
+        return True
 
-
-def remove_notification(notification_list: list[dict]) -> bool:
-    """Отменить уведомление по идентификатору."""
-    print_title("ОТМЕНА УВЕДОМЛЕНИЯ")
-    if not notification_list:
-        print("Отменять нечего: список уведомлений пуст.")
-        return False
-    try:
-        notification = notify.cancel_notification(
-            notification_list,
-            utils.input_int("Идентификатор уведомления: ", 1, 9999),
+    @menu_action("ОТМЕНА УВЕДОМЛЕНИЯ")
+    def remove_notification(self) -> bool:
+        """Отменить уведомление по идентификатору."""
+        if not len(self.service.notifications):
+            print("Отменять нечего: список уведомлений пуст.")
+            return False
+        notification = self.service.cancel_notification(
+            utils.input_int("Идентификатор уведомления: ", 1, 9999)
         )
-    except (KeyError, ValueError) as error:
-        print(f"Отмена не выполнена: {utils.error_text(error)}")
-        return False
-    print(f"Уведомление №{notification['id']} отменено.")
-    return True
+        print(f"Уведомление №{notification.id} отменено.")
+        return True
 
+    @menu_action("ПОИСК УВЕДОМЛЕНИЙ")
+    def search(self) -> None:
+        """Найти уведомления по подстроке темы или текста."""
+        query = utils.input_text("Строка поиска: ")
+        found = self.service.notifications.find(query)
+        if not found:
+            print("Ничего не найдено.")
+            return
+        for item in found:
+            print(f"{item.id:>3}. {item}")
 
-def search_notifications(notification_list: list[dict]) -> None:
-    """Найти уведомления по подстроке темы или текста."""
-    print_title("ПОИСК УВЕДОМЛЕНИЙ")
-    query = utils.input_text("Строка поиска: ")
-    found = notify.find_notifications(notification_list, query)
-    if not found:
-        print("Ничего не найдено.")
-        return
-    for item in found:
-        print(f"{item['id']:>3}. [{item['status']}] {item['subject']}")
+    @menu_action("СТАТИСТИКА")
+    def show_statistics(self) -> None:
+        """Вывести статистику по статусам уведомлений."""
+        total = len(self.service.notifications)
+        if not total:
+            print("Данных для статистики пока нет.")
+            return
+        for status, count in self.service.statistics().items():
+            share = round(count / total * 100, 1)
+            print(f"  {status:<12} {count:>3} ({share}%)")
+        delayed = list(self.service.notifications.by_status(STATUS_DELAYED))
+        print(f"Всего уведомлений: {total}, ожидают отправки: {len(delayed)}")
 
-
-def show_statistics(notification_list: list[dict]) -> None:
-    """Вывести статистику по статусам уведомлений."""
-    print_title("СТАТИСТИКА")
-    total = len(notification_list)
-    if not total:
-        print("Данных для статистики пока нет.")
-        return
-    statistics = notify.count_by_status(notification_list)
-    for status, count in statistics.items():
-        share = round(count / total * 100, 1)
-        print(f"  {status:<12} {count:>3} ({share}%)")
-    delayed = list(
-        notify.notifications_by_status(
-            notification_list, notify.STATUS_DELAYED
+    @menu_action("КЛАССЫ ПРОЕКТА")
+    def show_reference(self) -> None:
+        """Вывести справку о классах проекта (интроспекция)."""
+        classes = (
+            models.User, models.Channel, models.EmailChannel,
+            models.SmsChannel, models.PushChannel, models.Notification,
+            repositories.UserRepository, delivery.DeliveryRules,
+            NotificationService,
         )
-    )
-    print(f"Всего уведомлений: {total}, ожидают отправки: {len(delayed)}")
+        for cls in classes:
+            print(f"--- {utils.class_hierarchy(cls)} ---")
+            for description in utils.describe_class(cls):
+                print(f"  {description}")
 
+    @menu_action("НОВЫЙ ПОЛЬЗОВАТЕЛЬ")
+    def add_user(self) -> bool:
+        """Добавить пользователя."""
+        name = utils.input_text("Имя: ")
+        contact = utils.input_text("Контакт (e-mail или телефон): ")
+        quiet_start = utils.input_int("Начало тихих часов (0-23): ", 0, 23)
+        quiet_end = utils.input_int("Конец тихих часов (0-23): ", 0, 23)
+        user = self.service.users.create(name, contact, quiet_start,
+                                         quiet_end)
+        print(f"Добавлен пользователь №{user.id}: {user}")
+        return True
 
-def show_reference() -> None:
-    """Вывести справку о функциях проекта (интроспекция)."""
-    print_title("ФУНКЦИИ ПРОЕКТА")
-    for module in (users, channels, notify, storage, utils):
-        print(f"--- {module.__name__} ---")
-        for description in utils.describe_module(module):
-            print(f"  {description}")
+    @menu_action("ПОДПИСКА ПОЛЬЗОВАТЕЛЯ")
+    def toggle_subscription(self) -> bool:
+        """Включить или отключить подписку пользователя."""
+        user_id = utils.input_int("Идентификатор пользователя: ", 1, 999)
+        subscribed = self.service.toggle_subscription(user_id)
+        state = "подписан на рассылку" if subscribed else "отписан"
+        print(f"Пользователь №{user_id} {state}.")
+        return True
 
 
 def main() -> None:
-    """Точка запуска приложения: цикл меню и вызов функций."""
-    user_list = storage.load_users()
-    channel_list = storage.load_channels()
-    notification_list = storage.load_notifications()
-
-    print_title("СЕРВИС УПРАВЛЕНИЯ УВЕДОМЛЕНИЯМИ")
-    while True:
-        print(MENU_TEXT)
-        choice = utils.input_choice("Выберите действие: ", MENU_CHOICES)
-        if choice == "0":
-            print("Завершение работы.")
-            break
-        if choice == "1":
-            show_users(user_list)
-        elif choice == "2":
-            show_channels(channel_list)
-        elif choice == "3":
-            show_notifications(notification_list)
-        elif choice == "4":
-            show_delivery_check(user_list, channel_list)
-        elif choice == "5":
-            if add_notification(notification_list, user_list, channel_list):
-                storage.save_notifications(notification_list)
-                storage.save_channels(channel_list)
-        elif choice == "6":
-            if remove_notification(notification_list):
-                storage.save_notifications(notification_list)
-        elif choice == "7":
-            search_notifications(notification_list)
-        elif choice == "8":
-            show_statistics(notification_list)
-        elif choice == "9":
-            show_reference()
+    """Точка запуска: загрузка данных и запуск меню."""
+    app = ConsoleApp(NotificationService.from_files())
+    app.run()
