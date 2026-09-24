@@ -28,7 +28,9 @@ class Repository(Generic[EntityType]):
     выполняются через объект JsonStorage.
     """
 
-    entity_class: type[Entity] = Entity
+    # Any: базовый класс Entity абстрактный, конкретный класс
+    # сущности задают наследники хранилища.
+    entity_class: Any = Entity
     not_found_text = "Запись «{key}» не найдена"
 
     def __init__(

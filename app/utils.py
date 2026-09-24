@@ -114,6 +114,8 @@ def describe_class(cls: type) -> list[str]:
             kind, function = "метод", member
         else:
             continue
+        if function is None:
+            continue
         document = inspect.getdoc(function) or "описание отсутствует"
         signature = ""
         if kind != "свойство":
